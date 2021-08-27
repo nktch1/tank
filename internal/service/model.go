@@ -1,13 +1,13 @@
-package parser
+package service
 
-type Response struct {
+type SearchResults struct {
 	Error error
 	Items []responseItem
 }
 
 type responseItem struct {
-	Host  string
-	Url   string
+	Host string
+	Url  string
 }
 
 var tlds = map[string]struct{}{

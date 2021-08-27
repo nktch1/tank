@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"log"
 	"net/http"
 
+	"go.uber.org/zap"
+
 	"github.com/nktch1/tank/internal/config"
-	"github.com/nktch1/tank/internal/logging"
-	"github.com/nktch1/tank/internal/middlwares"
+	"github.com/nktch1/tank/internal/logger"
+	"github.com/nktch1/tank/internal/middlware"
 	"github.com/nktch1/tank/internal/server"
 	"github.com/nktch1/tank/internal/service"
 )
@@ -20,15 +21,17 @@ func main() {
 	}
 
 	var (
-		logger = logging.BuildLogger(conf)
-		addr   = fmt.Sprintf("0.0.0.0:%d", conf.Port)
-		svc    = &service.Tank{}
+		lg   = logger.BuildLogger(conf)
+		addr = fmt.Sprintf("0.0.0.0:%d", conf.Port)
+		svc  = &service.Tank{
+			Conf:  conf,
+		}
 		srv    = server.New(svc)
 	)
 
-	srv = middlwares.AddMiddleware(srv, logger)
+	srv = middlware.AddLogMiddleware(srv, lg)
 
-	logger.Info("Server started at", zap.Int("port", conf.Port))
+	lg.Info("Server started at", zap.Int("port", conf.Port))
 
 	if err = http.ListenAndServe(addr, srv); err != nil {
 		log.Fatal(err)

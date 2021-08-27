@@ -2,29 +2,23 @@ package domain
 
 import (
 	validation "github.com/go-ozzo/ozzo-validation"
-	uuid "github.com/satori/go.uuid"
 )
 
 type Request struct {
-	RequestID    string
-	SearchString string
+	RequestID    string `schema:"request_id"`
+	SearchString string `schema:"search_string"`
 }
 
 type Response struct {
-	HostToOptimalRPS map[string]int
+	HostToOptimalRPS map[string]int `json:"host_to_optimal_rps"`
 }
 
 func (r *Request) Validate() error {
-	if r.RequestID == "" {
-		r.RequestID = uuid.NewV4().String()
-	}
-
 	return validation.ValidateStruct(
 		r,
-
 		validation.Field(
 			&r.SearchString,
-			validation.Length(6, 100),
+			validation.Length(3, 100),
 		),
 	)
 }

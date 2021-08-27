@@ -1,4 +1,4 @@
-package parser
+package service
 
 import (
 	"bytes"
@@ -11,11 +11,8 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-const baseYandexURL = "https://yandex.ru/search/touch/" +
-	"?service=www.yandex&ui=webmobileapp.yandex&numdoc=50&lr=213&p=0&text=%s"
-
-func ParseSearchResponse(ctx context.Context, response []byte) Response {
-	res := Response{
+func ParseSearchResults(ctx context.Context, response []byte) *SearchResults {
+	res := &SearchResults{
 		Items: make([]responseItem, 0),
 	}
 
@@ -35,7 +32,6 @@ func ParseSearchResponse(ctx context.Context, response []byte) Response {
 			!aExists && !selection.Is("span.organic__advLabel") && cidExists {
 
 			link := selection.Find("a.Link").First()
-
 			if link == nil {
 				return
 			}
@@ -70,4 +66,19 @@ func ParseSearchResponse(ctx context.Context, response []byte) Response {
 	})
 
 	return res
+}
+
+func getRootDomain(domain string) string {
+	domain = strings.ToLower(domain)
+
+	parts := strings.Split(domain, ".")
+	if len(parts) < 3 {
+		return domain
+	}
+
+	if _, ok := tlds[strings.Join(parts[len(parts)-2:], ".")]; ok {
+		return strings.Join(parts[len(parts)-3:], ".")
+	}
+
+	return strings.Join(parts[len(parts)-2:], ".")
 }
