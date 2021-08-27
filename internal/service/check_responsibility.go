@@ -13,11 +13,6 @@ import (
 	"github.com/nktch1/tank/internal/domain"
 )
 
-type e struct {
-	err error
-	rps int
-}
-
 type ready struct {
 	host string
 	rps  int
