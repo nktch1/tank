@@ -23,10 +23,8 @@ func main() {
 	var (
 		lg   = logger.BuildLogger(conf)
 		addr = fmt.Sprintf("0.0.0.0:%d", conf.Port)
-		svc  = &service.Tank{
-			Conf:  conf,
-		}
-		srv    = server.New(svc)
+		svc  = service.New(conf)
+		srv  = server.New(svc)
 	)
 
 	srv = middlware.AddLogMiddleware(srv, lg)

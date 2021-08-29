@@ -38,8 +38,8 @@ func (m logMiddleware) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 
 	ctxzap.Extract(
 		request.Context()).Info(
-			"finished",
-			zap.Int64("time_ms",
+		"finished",
+		zap.Int64("time_ms",
 			time.Since(start).Milliseconds(),
 		),
 	)

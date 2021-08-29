@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"sync"
 
 	"github.com/nktch1/tank/internal/config"
@@ -9,9 +10,19 @@ import (
 )
 
 type Tank struct {
-	Conf *config.Config
+	conf   *config.Config
+	client http.Client
 
 	sync.Mutex
+}
+
+func New(conf *config.Config) *Tank {
+	return &Tank{
+		conf: conf,
+		client: http.Client{
+			Timeout: conf.TimeoutPerHost,
+		},
+	}
 }
 
 func (t *Tank) GatherHosts(ctx context.Context, req domain.Request) (*SearchResults, error) {

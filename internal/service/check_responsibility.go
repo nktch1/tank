@@ -27,18 +27,31 @@ func (t *Tank) CheckResponsibility(ctx context.Context, searchResults *SearchRes
 		HostToOptimalRPS: map[string]int{},
 	}
 
-	ctx, cancelByTimeout := context.WithTimeout(ctx, t.Conf.Timeout)
+	ctx, cancelByTimeout := context.WithTimeout(ctx, t.conf.Timeout)
 	defer cancelByTimeout()
 
 	ctx, done := context.WithCancel(ctx)
+
+	//go func() {
+	//	for {
+	//		select {
+	//		case <-ctx.Done():
+	//			return
+	//		default:
+	//		}
+	//		println("\n", runtime.NumGoroutine(), "\n")
+	//		time.Sleep(time.Millisecond * 100)
+	//	}
+	//}()
 
 	go t.processHost(ctx, done, resp, searchResults)
 
 	<-ctx.Done()
 
-	ctxzap.Extract(ctx).Debug(
+	ctxzap.Extract(ctx).Info(
 		"results",
 		zap.Int("completed", len(resp.HostToOptimalRPS)),
+		zap.Int("from", len(searchResults.Items)),
 	)
 
 	return resp, nil
@@ -49,20 +62,20 @@ func (t *Tank) processHost(ctx context.Context, done context.CancelFunc,
 	defer done()
 
 	var (
-		logger   = ctxzap.Extract(ctx)
-		rChannel = make(chan ready, len(queue.Items))
-		wg       = &sync.WaitGroup{}
+		logger    = ctxzap.Extract(ctx)
+		rChannel  = make(chan ready, len(queue.Items))
+		waitGroup = &sync.WaitGroup{}
 	)
 
 	for _, host := range queue.Items {
 		logger.Info("queue", zap.String("host", host.Host))
 
-		wg.Add(1)
-		go t.benchmark(ctx, host, rChannel, wg)
+		waitGroup.Add(1)
+		go t.benchmark(ctx, host, rChannel, waitGroup)
 	}
 
 	go func() {
-		wg.Wait()
+		waitGroup.Wait()
 		close(rChannel)
 	}()
 
@@ -77,21 +90,27 @@ func (t *Tank) benchmark(ctx context.Context, host responseItem, rChannel chan r
 	defer wg.Done()
 
 	var (
-		logger           = ctxzap.Extract(ctx)
-		waitWorkers      = &sync.WaitGroup{}
-		currentRPS       = t.Conf.StartRPS
-		statusChannel    = make(chan error)
-		ctxPerHost, done = context.WithCancel(ctx)
+		logger            = ctxzap.Extract(ctx)
+		waitWorkers       = &sync.WaitGroup{}
+		currentRPS        = t.conf.StartRPS
+		hostStatusChannel = make(chan error, 1)
+		ctxPerHost, done  = context.WithCancel(ctx)
 	)
 
+	waitWorkers.Add(1)
 	go func() {
-		status := <-statusChannel
+		defer waitWorkers.Done()
+
+		err := <-hostStatusChannel
+		if err == nil {
+			return
+		}
 
 		logger.Info(
 			"dequeue",
 			zap.String("host", host.Host),
 			zap.Int("rps", currentRPS),
-			zap.String("status", status.Error()),
+			zap.String("err", err.Error()),
 		)
 
 		rChannel <- ready{
@@ -102,66 +121,61 @@ func (t *Tank) benchmark(ctx context.Context, host responseItem, rChannel chan r
 		done()
 	}()
 
-	for {
-		start := time.Now()
+	//for {
+	start := time.Now()
 
-		for i := 0; i < currentRPS; i++ {
-			select {
-			case <-ctxPerHost.Done():
-				return
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			waitWorkers.Add(1)
-			go t.get(ctxPerHost, host.Url, statusChannel, waitWorkers)
+	for i := 0; i < currentRPS; i++ {
+		select {
+		case <-ctxPerHost.Done():
+			return
+		default:
 		}
 
-		waitWorkers.Wait()
-		currentRPS += t.Conf.IncreasingStepRPS
-
-		logger.Debug(
-			"rps increased",
-			zap.String("host", host.Host),
-			zap.Int("rps", currentRPS),
-			zap.Int64("time", time.Since(start).Milliseconds()),
-		)
-
-		time.Sleep(time.Second)
+		waitWorkers.Add(1)
+		go t.get(ctxPerHost, host.Url, hostStatusChannel, waitWorkers)
 	}
+
+	waitWorkers.Wait()
+	currentRPS += t.conf.IncreasingStepRPS
+
+	logger.Debug(
+		"rps increased",
+		zap.String("host", host.Host),
+		zap.Int("rps", currentRPS),
+		zap.Int64("time", time.Since(start).Milliseconds()),
+	)
+
+	//	time.Sleep(time.Second)
+	//}
 }
 
 func (t *Tank) get(ctx context.Context, url string, statusChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	errC := make(chan error)
-
-	go func() {
-		resp, err := http.Get(url)
-		if err != nil {
-			errC <- err
-			return
+	passErr := func(err error) {
+		select {
+		case statusChan <- err:
+		default:
 		}
-
-		if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
-			errC <- errors.New("invalid status code: " + resp.Status)
-			return
-		}
-
-		errC <- nil
-	}()
-
-	select {
-	case <-ctx.Done():
-		return
-
-	case err := <-errC:
-		if err != nil {
-			statusChan <- err
-		}
-
-	case <-time.After(t.Conf.TimeoutPerHost):
-		statusChan <- errors.New("waiting time is exceeded")
 	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		passErr(err)
+		return
+	}
+
+	resp, err := t.client.Do(req.WithContext(ctx))
+	if err != nil {
+		passErr(err)
+		return
+	}
+
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		err = errors.New("invalid status code: " + resp.Status)
+		passErr(err)
+		return
+	}
+
+	statusChan <- nil
 }
