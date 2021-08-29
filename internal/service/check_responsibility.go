@@ -13,9 +13,16 @@ import (
 	"github.com/nktch1/tank/internal/domain"
 )
 
+const statusesKey = "statuses"
+
 type ready struct {
 	host string
 	rps  int
+}
+
+type hostStatus struct {
+	rps   int
+	ready bool
 }
 
 func (t *Tank) CheckResponsibility(ctx context.Context, searchResults *SearchResults) (*domain.Response, error) {
@@ -31,6 +38,11 @@ func (t *Tank) CheckResponsibility(ctx context.Context, searchResults *SearchRes
 	defer cancelByTimeout()
 
 	ctx, done := context.WithCancel(ctx)
+	ctx = context.WithValue(
+		ctx,
+		statusesKey,
+		make(map[string]*hostStatus),
+	)
 
 	//go func() {
 	//	for {
@@ -39,8 +51,17 @@ func (t *Tank) CheckResponsibility(ctx context.Context, searchResults *SearchRes
 	//			return
 	//		default:
 	//		}
-	//		println("\n", runtime.NumGoroutine(), "\n")
-	//		time.Sleep(time.Millisecond * 100)
+	//
+	//		t.Lock()
+	//		for k, v := range ctx.Value(statusesKey).(map[string]*hostStatus) {
+	//			fmt.Println(k, "-", v.rps)
+	//		}
+	//		t.Unlock()
+	//
+	//		println("\n")
+	//
+	//		//println("\n", runtime.NumGoroutine(), "\n")
+	//		time.Sleep(time.Millisecond * 1000)
 	//	}
 	//}()
 
@@ -68,7 +89,7 @@ func (t *Tank) processHost(ctx context.Context, done context.CancelFunc,
 	)
 
 	for _, host := range queue.Items {
-		logger.Info("queue", zap.String("host", host.Host))
+		logger.Debug("queue", zap.String("host", host.Host))
 
 		waitGroup.Add(1)
 		go t.benchmark(ctx, host, rChannel, waitGroup)
@@ -93,7 +114,7 @@ func (t *Tank) benchmark(ctx context.Context, host responseItem, rChannel chan r
 		logger            = ctxzap.Extract(ctx)
 		waitWorkers       = &sync.WaitGroup{}
 		currentRPS        = t.conf.StartRPS
-		hostStatusChannel = make(chan error, 1)
+		hostStatusChannel = make(chan error)
 		ctxPerHost, done  = context.WithCancel(ctx)
 	)
 
@@ -101,7 +122,23 @@ func (t *Tank) benchmark(ctx context.Context, host responseItem, rChannel chan r
 	go func() {
 		defer waitWorkers.Done()
 
-		err := <-hostStatusChannel
+		var (
+			statuses = ctx.Value(statusesKey).(map[string]*hostStatus)
+			err      = <-hostStatusChannel
+		)
+
+		t.Lock()
+		if statuses[host.Host] == nil {
+			statuses[host.Host] = &hostStatus{}
+		}
+
+		if err != nil {
+			statuses[host.Host].ready = true
+		}
+
+		statuses[host.Host].rps = currentRPS
+		t.Unlock()
+
 		if err == nil {
 			return
 		}
