@@ -177,5 +177,5 @@ func (t *Tank) get(ctx context.Context, url string, statusChan chan error, wg *s
 		return
 	}
 
-	statusChan <- nil
+	passErr(nil)
 }
