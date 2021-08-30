@@ -1,7 +1,10 @@
 service=tank
 
-run:
-	source .ENV && go run -race cmd/${service}/main.go
+rest:
+	source .ENV && go run -race cmd/${service}/rest/main.go
+
+cli:
+	source .ENV && go run -race cmd/${service}/cli/main.go
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o app main.go

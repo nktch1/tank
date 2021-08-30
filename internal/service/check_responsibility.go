@@ -101,9 +101,9 @@ func (t *Tank) processHost(ctx context.Context, done context.CancelFunc,
 	}()
 
 	for r := range rChannel {
-		t.Lock()
+		t.mu.Lock()
 		resp.HostToOptimalRPS[r.host] = r.rps
-		t.Unlock()
+		t.mu.Unlock()
 	}
 }
 
@@ -127,7 +127,7 @@ func (t *Tank) benchmark(ctx context.Context, host responseItem, rChannel chan r
 			err      = <-hostStatusChannel
 		)
 
-		t.Lock()
+		t.mu.Lock()
 		if statuses[host.Host] == nil {
 			statuses[host.Host] = &hostStatus{}
 		}
@@ -137,7 +137,7 @@ func (t *Tank) benchmark(ctx context.Context, host responseItem, rChannel chan r
 		}
 
 		statuses[host.Host].rps = currentRPS
-		t.Unlock()
+		t.mu.Unlock()
 
 		if err == nil {
 			return

@@ -13,7 +13,7 @@ type Tank struct {
 	conf   *config.Config
 	client http.Client
 
-	sync.Mutex
+	mu sync.Mutex
 }
 
 func New(conf *config.Config) *Tank {
